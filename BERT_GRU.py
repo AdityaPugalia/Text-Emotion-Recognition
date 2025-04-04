@@ -1,31 +1,40 @@
-from transformers import DistilBertModel
 import torch
-import numpy as np
-from torch.optim import Adam
-from tqdm import tqdm
-import pandas as pd
 import pickle
-from Simple_BERT import DistilBERTDataset
+import numpy as np
+import pandas as pd
+
+from tqdm import tqdm
+from torch.optim import Adam
 from torch.utils.data import DataLoader
+from transformers import DistilBertModel
+
+from Simple_BERT import DistilBERTDataset
+from utils import get_best_device
 
 
 class BertGRU(torch.nn.Module):
-    def __init__(self, num_labels, hidden_dim=64, num_layers=1, model_path='distilbert-base-uncased'):
+    def __init__(
+        self,
+        num_labels,
+        hidden_dim=64,
+        num_layers=1,
+        model_path="distilbert-base-uncased",
+    ):
         super(BertGRU, self).__init__()
-        if torch.backends.mps.is_available():
-            self.device = torch.device('mps')
-        else:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
+
+        self.device = get_best_device()
+
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
             param.requires_grad = False  # Freeze BERT weights
 
-        self.gru = torch.nn.GRU(input_size=768,
-                                hidden_size=hidden_dim,
-                                num_layers=num_layers,
-                                batch_first=True,
-                                bidirectional=True)
+        self.gru = torch.nn.GRU(
+            input_size=768,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True,
+        )
 
         self.dropout = torch.nn.Dropout(0.5)
         self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)  # *2 for bidirectional
@@ -33,7 +42,9 @@ class BertGRU(torch.nn.Module):
 
     def forward(self, input_ids, attention_mask):
         # BERT embeddings
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        outputs = self.bert(
+            input_ids=input_ids, attention_mask=attention_mask
+        ).last_hidden_state
         mask = attention_mask.unsqueeze(-1).float()
         masked_outputs = outputs * mask  # Mask padding tokens
 
@@ -45,10 +56,18 @@ class BertGRU(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def train_GRU(self, train_dataloader, val_dataloader, num_epochs=100, learning_rate=0.001, patience=3, save_path='models/best_GRU_model.pt'):
+    def train_GRU(
+        self,
+        train_dataloader,
+        val_dataloader,
+        num_epochs=100,
+        learning_rate=0.001,
+        patience=3,
+        save_path="models/best_GRU_model.pt",
+    ):
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
         patience_counter = 0
 
         train_accuracies, train_losses, val_accuracies, val_losses = [], [], [], []
@@ -57,10 +76,12 @@ class BertGRU(torch.nn.Module):
             self.train()
             total_loss, correct, total = 0, 0, 0
 
-            for batch in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]"):
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
+            for batch in tqdm(
+                train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]"
+            ):
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
 
                 optimizer.zero_grad()
                 outputs = self.forward(input_ids, attention_mask)
@@ -82,10 +103,12 @@ class BertGRU(torch.nn.Module):
             val_loss, correct, total = 0, 0, 0
 
             with torch.no_grad():
-                for batch in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]"):
-                    input_ids = batch['input_ids'].to(self.device)
-                    attention_mask = batch['attention_mask'].to(self.device)
-                    labels = batch['labels'].to(self.device)
+                for batch in tqdm(
+                    val_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]"
+                ):
+                    input_ids = batch["input_ids"].to(self.device)
+                    attention_mask = batch["attention_mask"].to(self.device)
+                    labels = batch["labels"].to(self.device)
 
                     outputs = self.forward(input_ids, attention_mask)
                     loss = criterion(outputs, labels)
@@ -124,9 +147,9 @@ class BertGRU(torch.nn.Module):
 
         with torch.no_grad():
             for batch in dataloader:
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
 
                 outputs = self.forward(input_ids, attention_mask)
                 loss = criterion(outputs, labels)
@@ -141,17 +164,24 @@ class BertGRU(torch.nn.Module):
         avg_loss = total_loss / total
         accuracy = correct / total
         return np.array(predictions), logits, avg_loss, accuracy
-    
-if __name__ == "__main__":
-    #read the data
-    emotion_train = pd.read_csv('data/emotion_train.csv')
-    emotion_val = pd.read_csv('data/emotion_val.csv')
-    emotion_test = pd.read_csv('data/emotion_test.csv')
 
-    #create Dataset
-    emotion_GRU_train = DistilBERTDataset(emotion_train['text'].tolist(), emotion_train['label'].to_list())
-    emotion_GRU_val = DistilBERTDataset(emotion_val['text'].tolist(), emotion_val['label'].to_list())
-    emotion_GRU_test = DistilBERTDataset(emotion_test['text'].tolist(), emotion_test['label'].to_list())
+
+if __name__ == "__main__":
+    # read the data
+    emotion_train = pd.read_csv("data/emotion_train.csv")
+    emotion_val = pd.read_csv("data/emotion_val.csv")
+    emotion_test = pd.read_csv("data/emotion_test.csv")
+
+    # create Dataset
+    emotion_GRU_train = DistilBERTDataset(
+        emotion_train["text"].tolist(), emotion_train["label"].to_list()
+    )
+    emotion_GRU_val = DistilBERTDataset(
+        emotion_val["text"].tolist(), emotion_val["label"].to_list()
+    )
+    emotion_GRU_test = DistilBERTDataset(
+        emotion_test["text"].tolist(), emotion_test["label"].to_list()
+    )
 
     # set seed for reproducibility
     np.random.seed(42)
@@ -162,16 +192,35 @@ if __name__ == "__main__":
     emotion_GRU_val_data = DataLoader(emotion_GRU_val, batch_size=128, shuffle=False)
     emotion_GRU_test_data = DataLoader(emotion_GRU_test, batch_size=128, shuffle=False)
 
-    #training the model
-    emotion_GRU_model = BertGRU(num_labels = 6)
-    train_accuracies, train_losses, val_accuracies, val_losses = emotion_GRU_model.train_GRU(train_dataloader= emotion_GRU_train_data, val_dataloader= emotion_GRU_val_data, num_epochs= 100, patience= 3)
+    # training the model
+    emotion_GRU_model = BertGRU(num_labels=6)
+    train_accuracies, train_losses, val_accuracies, val_losses = (
+        emotion_GRU_model.train_GRU(
+            train_dataloader=emotion_GRU_train_data,
+            val_dataloader=emotion_GRU_val_data,
+            num_epochs=100,
+            patience=3,
+        )
+    )
 
-    #evaluating the model
-    test_predictions, test_logits,test_loss, test_accuracy  = emotion_GRU_model.evaluate(emotion_GRU_test_data)
+    # evaluating the model
+    test_predictions, test_logits, test_loss, test_accuracy = (
+        emotion_GRU_model.evaluate(emotion_GRU_test_data)
+    )
     print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
 
     # save results as python objects
-    with open('results/emotion_GRU_results.pkl', 'wb') as f:
-        pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses, test_predictions, test_logits, test_accuracy, test_loss), f)
-
-
+    with open("results/emotion_GRU_results.pkl", "wb") as f:
+        pickle.dump(
+            (
+                train_accuracies,
+                train_losses,
+                val_accuracies,
+                val_losses,
+                test_predictions,
+                test_logits,
+                test_accuracy,
+                test_loss,
+            ),
+            f,
+        )

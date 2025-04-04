@@ -1,0 +1,8 @@
+torch
+transformers
+numpy
+pandas
+tqdm
+scikit-learn
+huggingface_hub
+black
