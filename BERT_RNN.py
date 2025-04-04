@@ -1,3 +1,4 @@
+import time
 import torch
 import pickle
 import numpy as np
@@ -158,6 +159,7 @@ class BertSimpleRNN(torch.nn.Module):
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     # read the data
     emotion_train = pd.read_csv("data/emotion_train.csv")
     emotion_val = pd.read_csv("data/emotion_val.csv")
@@ -183,8 +185,13 @@ if __name__ == "__main__":
     emotion_RNN_val_data = DataLoader(emotion_RNN_val, batch_size=128, shuffle=False)
     emotion_RNN_test_data = DataLoader(emotion_RNN_test, batch_size=128, shuffle=False)
 
+    print(f"Data loaded in {start_time.time() - time:.2f} seconds")
+
     # training the model
     emotion_RNN_model = BertSimpleRNN(num_labels=6)
+
+    train_start_time = time.time()
+
     train_accuracies, train_losses, val_accuracies, val_losses = (
         emotion_RNN_model.train_RNN(
             train_dataloader=emotion_RNN_train_data,
@@ -194,10 +201,14 @@ if __name__ == "__main__":
         )
     )
 
+    print(f"Model trained in {time.time() - train_start_time:.2f} seconds")
+
+    eval_start_time = time.time()
     # evaluating the model
     test_predictions, test_logits, test_loss, test_accuracy = (
         emotion_RNN_model.evaluate(emotion_RNN_test_data)
     )
+    print(f"Model evaluated in {time.time() - eval_start_time:.2f} seconds")
     print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
 
     # save results as python objects
@@ -215,3 +226,6 @@ if __name__ == "__main__":
             ),
             f,
         )
+
+    print(f"Results saved to results/emotion_RNN_results.pkl")
+    print(f"Total time taken: {time.time() - start_time:.2f} seconds")

@@ -1,3 +1,4 @@
+import time
 import torch
 import pickle
 import numpy as np
@@ -167,6 +168,7 @@ class BertGRU(torch.nn.Module):
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     # read the data
     emotion_train = pd.read_csv("data/emotion_train.csv")
     emotion_val = pd.read_csv("data/emotion_val.csv")
@@ -192,8 +194,12 @@ if __name__ == "__main__":
     emotion_GRU_val_data = DataLoader(emotion_GRU_val, batch_size=128, shuffle=False)
     emotion_GRU_test_data = DataLoader(emotion_GRU_test, batch_size=128, shuffle=False)
 
+    print(f"Data loaded in {time.time() - start_time:.2f} seconds")
+
     # training the model
     emotion_GRU_model = BertGRU(num_labels=6)
+
+    train_start_time = time.time()
     train_accuracies, train_losses, val_accuracies, val_losses = (
         emotion_GRU_model.train_GRU(
             train_dataloader=emotion_GRU_train_data,
@@ -202,11 +208,15 @@ if __name__ == "__main__":
             patience=3,
         )
     )
+    print(f"Training completed in {time.time() - train_start_time:.2f} seconds")
+
+    eval_start_time = time.time()
 
     # evaluating the model
     test_predictions, test_logits, test_loss, test_accuracy = (
         emotion_GRU_model.evaluate(emotion_GRU_test_data)
     )
+    print(f"Evaluation completed in {time.time() - eval_start_time:.2f} seconds")
     print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
 
     # save results as python objects
@@ -224,3 +234,5 @@ if __name__ == "__main__":
             ),
             f,
         )
+    print("Results saved to emotion_GRU_results.pkl")
+    print(f"Total time taken: {time.time() - start_time:.2f} seconds")
