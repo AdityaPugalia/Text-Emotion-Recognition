@@ -1,57 +1,59 @@
 from transformers import DistilBertModel
-from torch.utils.data import Dataset, DataLoader
 import torch
 import numpy as np
 from torch.optim import Adam
 from tqdm import tqdm
 
-class BertSimpleRNN(torch.nn.Module):
-    def __init__(self, num_labels, hidden_dim=64, model_path='distilbert-base-uncased'):
-        super(BertSimpleRNN, self).__init__()
+
+class BertGRU(torch.nn.Module):
+    def __init__(self, num_labels, hidden_dim=64, num_layers=1, model_path='distilbert-base-uncased'):
+        super(BertGRU, self).__init__()
         if torch.backends.mps.is_available():
             self.device = torch.device('mps')
         else:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+        
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
-            param.requires_grad = False  # Freeze BERT
+            param.requires_grad = False  # Freeze BERT weights
 
-        self.rnn = torch.nn.RNN(input_size=768, hidden_size=hidden_dim,
-                                batch_first=True, nonlinearity='tanh', bidirectional=True)
+        self.gru = torch.nn.GRU(input_size=768,
+                                hidden_size=hidden_dim,
+                                num_layers=num_layers,
+                                batch_first=True,
+                                bidirectional=True)
 
         self.dropout = torch.nn.Dropout(0.5)
-        self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)
+        self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)  # *2 for bidirectional
         self.to(self.device)
 
     def forward(self, input_ids, attention_mask):
-        bert_output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        embeddings = bert_output.last_hidden_state[:, 1:, :]  # Remove [CLS] token
+        # BERT embeddings
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        mask = attention_mask.unsqueeze(-1).float()
+        masked_outputs = outputs * mask  # Mask padding tokens
 
-        mask = attention_mask[:, 1:].unsqueeze(-1).float()
-        masked_embeddings = embeddings * mask
+        # RNN
+        rnn_out, _ = self.gru(masked_outputs)
+        pooled_output = rnn_out[:, -1, :]  # Take the last timestep
 
-        rnn_out, _ = self.rnn(masked_embeddings)  # [batch, seq_len, hidden*2]
-        final_hidden = rnn_out[:, -1, :]  # Take last time step
-        x = self.dropout(final_hidden)
+        x = self.dropout(pooled_output)
         x = self.fc(x)
         return x
 
-    def train_RNN(self, train_dataloader, val_dataloader, num_epochs=10, learning_rate=0.001, 
-                  patience=3, save_path='models/best_simpleRNN_model.pt'):
+    def train_RNN(self, train_dataloader, val_dataloader, num_epochs=100, learning_rate=0.001, patience=3, save_path='models/best_RNN_model.pt'):
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
         best_val_loss = float('inf')
         patience_counter = 0
 
-        train_accuracies, train_losses = [], []
-        val_accuracies, val_losses = [], []
+        train_accuracies, train_losses, val_accuracies, val_losses = [], [], [], []
 
         for epoch in range(num_epochs):
             self.train()
             total_loss, correct, total = 0, 0, 0
 
-            for batch in tqdm(train_dataloader):
+            for batch in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]"):
                 input_ids = batch['input_ids'].to(self.device)
                 attention_mask = batch['attention_mask'].to(self.device)
                 labels = batch['labels'].to(self.device)
@@ -62,58 +64,59 @@ class BertSimpleRNN(torch.nn.Module):
                 loss.backward()
                 optimizer.step()
 
-                preds = torch.argmax(outputs, dim=1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
                 total_loss += loss.item() * labels.size(0)
+                correct += (outputs.argmax(1) == labels).sum().item()
+                total += labels.size(0)
 
             avg_train_loss = total_loss / total
-            train_acc = correct / total
+            train_accuracy = correct / total
             train_losses.append(avg_train_loss)
-            train_accuracies.append(train_acc)
-            print(f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.4f}, Accuracy: {train_acc:.4f}")
+            train_accuracies.append(train_accuracy)
+            print(f"Train Loss: {avg_train_loss:.4f}, Accuracy: {train_accuracy:.4f}")
 
-            # Validation
             self.eval()
             val_loss, correct, total = 0, 0, 0
+
             with torch.no_grad():
-                for batch in val_dataloader:
+                for batch in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]"):
                     input_ids = batch['input_ids'].to(self.device)
                     attention_mask = batch['attention_mask'].to(self.device)
                     labels = batch['labels'].to(self.device)
 
                     outputs = self.forward(input_ids, attention_mask)
                     loss = criterion(outputs, labels)
-                    preds = torch.argmax(outputs, dim=1)
-                    correct += (preds == labels).sum().item()
-                    total += labels.size(0)
+
                     val_loss += loss.item() * labels.size(0)
+                    correct += (outputs.argmax(1) == labels).sum().item()
+                    total += labels.size(0)
 
             avg_val_loss = val_loss / total
-            val_acc = correct / total
+            val_accuracy = correct / total
             val_losses.append(avg_val_loss)
-            val_accuracies.append(val_acc)
-            print(f"[Epoch {epoch+1}] Val Loss: {avg_val_loss:.4f}, Accuracy: {val_acc:.4f}")
+            val_accuracies.append(val_accuracy)
+            print(f"Val Loss: {avg_val_loss:.4f}, Accuracy: {val_accuracy:.4f}")
 
-            # Early stopping
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
                 patience_counter = 0
                 torch.save(self.state_dict(), save_path)
-                print("✔️ Saved best model")
+                print(f"Saved best model at epoch {epoch+1}")
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
-                    print("⏹️ Early stopping triggered")
+                    print(f"Early stopping at epoch {epoch+1}")
                     break
 
         return train_accuracies, train_losses, val_accuracies, val_losses
 
     def evaluate(self, dataloader):
         self.eval()
-        predictions, logits = [], []
+        predictions = []
+        logits = []
         criterion = torch.nn.CrossEntropyLoss()
-        total_loss, correct, total = 0, 0, 0
+        total_loss = 0
+        correct = 0
+        total = 0
 
         with torch.no_grad():
             for batch in dataloader:
@@ -123,13 +126,13 @@ class BertSimpleRNN(torch.nn.Module):
 
                 outputs = self.forward(input_ids, attention_mask)
                 loss = criterion(outputs, labels)
-                preds = torch.argmax(outputs, dim=1)
 
-                predictions.extend(preds.cpu().numpy())
-                logits.extend(outputs.cpu().numpy())
                 total_loss += loss.item() * labels.size(0)
-                correct += (preds == labels).sum().item()
                 total += labels.size(0)
+                correct += (outputs.argmax(1) == labels).sum().item()
+
+                predictions.extend(outputs.argmax(1).cpu().numpy())
+                logits.extend(outputs.detach().cpu().numpy())
 
         avg_loss = total_loss / total
         accuracy = correct / total

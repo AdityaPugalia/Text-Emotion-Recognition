@@ -5,9 +5,9 @@ import numpy as np
 from torch.optim import Adam
 from tqdm import tqdm
 
-class BertSimpleRNN(torch.nn.Module):
-    def __init__(self, num_labels, hidden_dim=64, model_path='distilbert-base-uncased'):
-        super(BertSimpleRNN, self).__init__()
+class BertLSTM(torch.nn.Module):
+    def __init__(self, num_labels, hidden_dim=64, num_layers=1, model_path='distilbert-base-uncased'):
+        super(BertLSTM, self).__init__()
         if torch.backends.mps.is_available():
             self.device = torch.device('mps')
         else:
@@ -15,30 +15,34 @@ class BertSimpleRNN(torch.nn.Module):
 
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
-            param.requires_grad = False  # Freeze BERT
+            param.requires_grad = False  # Freeze BERT weights
 
-        self.rnn = torch.nn.RNN(input_size=768, hidden_size=hidden_dim,
-                                batch_first=True, nonlinearity='tanh', bidirectional=True)
+        self.lstm = torch.nn.LSTM(input_size=768, hidden_size=hidden_dim,
+                                  num_layers=num_layers, batch_first=True,
+                                  bidirectional=True)
 
         self.dropout = torch.nn.Dropout(0.5)
-        self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)
+        self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)  # bidirectional = hidden*2
         self.to(self.device)
 
     def forward(self, input_ids, attention_mask):
+        # BERT embeddings
         bert_output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        embeddings = bert_output.last_hidden_state[:, 1:, :]  # Remove [CLS] token
+        embeddings = bert_output.last_hidden_state[:, 1:, :]  # Skip [CLS] token
 
+        # Mask out PAD tokens
         mask = attention_mask[:, 1:].unsqueeze(-1).float()
         masked_embeddings = embeddings * mask
 
-        rnn_out, _ = self.rnn(masked_embeddings)  # [batch, seq_len, hidden*2]
-        final_hidden = rnn_out[:, -1, :]  # Take last time step
+        lstm_out, (hn, cn) = self.lstm(masked_embeddings)
+        final_hidden = lstm_out[:, -1, :]  # Last time step
+
         x = self.dropout(final_hidden)
         x = self.fc(x)
         return x
 
-    def train_RNN(self, train_dataloader, val_dataloader, num_epochs=10, learning_rate=0.001, 
-                  patience=3, save_path='models/best_simpleRNN_model.pt'):
+    def train_LSTM(self, train_dataloader, val_dataloader, num_epochs=10, learning_rate=0.001,
+                   patience=3, save_path='models/best_LSTM_model.pt'):
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
         best_val_loss = float('inf')
