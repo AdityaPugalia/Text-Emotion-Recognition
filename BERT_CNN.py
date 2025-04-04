@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from torch.optim import Adam
 from tqdm import tqdm
+from Simple_BERT import DistilBERTDataset
+import pickle
 
 
 
@@ -140,3 +142,36 @@ class BertCNN(torch.nn.Module):
         accuracy = correct / total
         
         return np.array(predictions), logits, avg_loss, accuracy
+
+if __name__ == "__main__":
+    #read the data
+    emotion_train = pd.read_csv('data/emotion_train.csv')
+    emotion_val = pd.read_csv('data/emotion_val.csv')
+    emotion_test = pd.read_csv('data/emotion_test.csv')
+
+    #create Dataset
+    emotion_CNN_train = DistilBERTDataset(emotion_train['text'].tolist(), emotion_train['label'].to_list())
+    emotion_CNN_val = DistilBERTDataset(emotion_val['text'].tolist(), emotion_val['label'].to_list())
+    emotion_CNN_test = DistilBERTDataset(emotion_test['text'].tolist(), emotion_test['label'].to_list())
+
+    # set seed for reproducibility
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    # create DataLoader for each dataset
+    emotion_CNN_train_data = DataLoader(emotion_CNN_train, batch_size=128, shuffle=True)
+    emotion_CNN_val_data = DataLoader(emotion_CNN_val, batch_size=128, shuffle=False)
+    emotion_CNN_test_data = DataLoader(emotion_CNN_test, batch_size=128, shuffle=False)
+
+    #training the model
+    emotion_CNN_model = BertCNN(num_labels = 6)
+    train_accuracies, train_losses, val_accuracies, val_losses = emotion_CNN_model.train_CNN(train_dataloader= emotion_CNN_train_data, val_dataloader= emotion_CNN_val_data, num_epochs= 100, patience= 3)
+
+    #evaluating the model
+    test_predictions, test_logits,test_loss, test_accuracy  = emotion_CNN_model.evaluate(emotion_CNN_test_data)
+    print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
+
+    # save results as python objects
+    with open('results/emotion_CNN_results.pkl', 'wb') as f:
+        pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses, test_predictions, test_logits, test_accuracy, test_loss), f)
+
