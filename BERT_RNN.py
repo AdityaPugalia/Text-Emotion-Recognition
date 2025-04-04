@@ -185,7 +185,7 @@ if __name__ == "__main__":
     emotion_RNN_val_data = DataLoader(emotion_RNN_val, batch_size=128, shuffle=False)
     emotion_RNN_test_data = DataLoader(emotion_RNN_test, batch_size=128, shuffle=False)
 
-    print(f"Data loaded in {start_time.time() - time:.2f} seconds")
+    print(f"Data loaded in {time.time() - start_time:.2f} seconds")
 
     # training the model
     emotion_RNN_model = BertSimpleRNN(num_labels=6)
