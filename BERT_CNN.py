@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 import pickle
@@ -57,6 +58,9 @@ class BertCNN(torch.nn.Module):
         patience=3,
         save_path="models/best_CNN_model.pt",
     ):
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
         best_val_loss = float("inf")
@@ -174,6 +178,9 @@ class BertCNN(torch.nn.Module):
 
 
 if __name__ == "__main__":
+
+    print("Training BERT CNN: ")
+
     start_time = time.time()
     # read the data
     emotion_train = pd.read_csv("data/emotion_train.csv")
@@ -224,7 +231,19 @@ if __name__ == "__main__":
         emotion_CNN_model.evaluate(emotion_CNN_test_data)
     )
     print(f"Evaluation completed in {time.time() - eval_start_time:.2f} seconds")
-    print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
+
+    print(
+        f"""
+        BERT CNN Model Evaluation:
+        Test Loss: {test_loss:.4f}
+        Test Accuracy: {test_accuracy:.4f}
+        Test Predictions: {test_predictions[:10]}
+        Test Logits: {test_logits[:10]}
+        """
+    )
+
+    if not os.path.exists("results"):
+        os.makedirs("results")
 
     # save results as python objects
     with open("results/emotion_CNN_results.pkl", "wb") as f:
