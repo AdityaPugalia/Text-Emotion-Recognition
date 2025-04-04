@@ -3,6 +3,10 @@ import torch
 import numpy as np
 from torch.optim import Adam
 from tqdm import tqdm
+import pandas as pd
+import pickle
+from Simple_BERT import DistilBERTDataset
+from torch.utils.data import DataLoader
 
 
 class BertGRU(torch.nn.Module):
@@ -41,7 +45,7 @@ class BertGRU(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def train_RNN(self, train_dataloader, val_dataloader, num_epochs=100, learning_rate=0.001, patience=3, save_path='models/best_RNN_model.pt'):
+    def train_GRU(self, train_dataloader, val_dataloader, num_epochs=100, learning_rate=0.001, patience=3, save_path='models/best_GRU_model.pt'):
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
         best_val_loss = float('inf')
@@ -137,3 +141,37 @@ class BertGRU(torch.nn.Module):
         avg_loss = total_loss / total
         accuracy = correct / total
         return np.array(predictions), logits, avg_loss, accuracy
+    
+if __name__ == "__main__":
+    #read the data
+    emotion_train = pd.read_csv('data/emotion_train.csv')
+    emotion_val = pd.read_csv('data/emotion_val.csv')
+    emotion_test = pd.read_csv('data/emotion_test.csv')
+
+    #create Dataset
+    emotion_GRU_train = DistilBERTDataset(emotion_train['text'].tolist(), emotion_train['label'].to_list())
+    emotion_GRU_val = DistilBERTDataset(emotion_val['text'].tolist(), emotion_val['label'].to_list())
+    emotion_GRU_test = DistilBERTDataset(emotion_test['text'].tolist(), emotion_test['label'].to_list())
+
+    # set seed for reproducibility
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    # create DataLoader for each dataset
+    emotion_GRU_train_data = DataLoader(emotion_GRU_train, batch_size=128, shuffle=True)
+    emotion_GRU_val_data = DataLoader(emotion_GRU_val, batch_size=128, shuffle=False)
+    emotion_GRU_test_data = DataLoader(emotion_GRU_test, batch_size=128, shuffle=False)
+
+    #training the model
+    emotion_GRU_model = BertGRU(num_labels = 6)
+    train_accuracies, train_losses, val_accuracies, val_losses = emotion_GRU_model.train_GRU(train_dataloader= emotion_GRU_train_data, val_dataloader= emotion_GRU_val_data, num_epochs= 100, patience= 3)
+
+    #evaluating the model
+    test_predictions, test_logits,test_loss, test_accuracy  = emotion_GRU_model.evaluate(emotion_GRU_test_data)
+    print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
+
+    # save results as python objects
+    with open('results/emotion_GRU_results.pkl', 'wb') as f:
+        pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses, test_predictions, test_logits, test_accuracy, test_loss), f)
+
+
