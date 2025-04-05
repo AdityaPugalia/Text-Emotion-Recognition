@@ -1,27 +1,36 @@
-from transformers import DistilBertModel
-from torch.utils.data import Dataset, DataLoader
+import os
+import time
 import torch
+import pickle
 import numpy as np
 import pandas as pd
-from torch.optim import Adam
+
 from tqdm import tqdm
+from torch.optim import Adam
+from torch.utils.data import Dataset, DataLoader
+from transformers import DistilBertModel
+
 from Simple_BERT import DistilBERTDataset
-import pickle
+from utils import get_best_device
+
 
 class BertSimpleRNN(torch.nn.Module):
-    def __init__(self, num_labels, hidden_dim=64, model_path='distilbert-base-uncased'):
+    def __init__(self, num_labels, hidden_dim=64, model_path="distilbert-base-uncased"):
         super(BertSimpleRNN, self).__init__()
-        if torch.backends.mps.is_available():
-            self.device = torch.device('mps')
-        else:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.device = get_best_device()
 
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
             param.requires_grad = False  # Freeze BERT
 
-        self.rnn = torch.nn.RNN(input_size=768, hidden_size=hidden_dim,
-                                batch_first=True, nonlinearity='tanh', bidirectional=True)
+        self.rnn = torch.nn.RNN(
+            input_size=768,
+            hidden_size=hidden_dim,
+            batch_first=True,
+            nonlinearity="tanh",
+            bidirectional=True,
+        )
 
         self.dropout = torch.nn.Dropout(0.5)
         self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)
@@ -40,11 +49,21 @@ class BertSimpleRNN(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def train_RNN(self, train_dataloader, val_dataloader, num_epochs=10, learning_rate=0.001, 
-                  patience=3, save_path='models/best_simpleRNN_model.pt'):
+    def train_RNN(
+        self,
+        train_dataloader,
+        val_dataloader,
+        num_epochs=10,
+        learning_rate=0.001,
+        patience=3,
+        save_path="models/best_simpleRNN_model.pt",
+    ):
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
         patience_counter = 0
 
         train_accuracies, train_losses = [], []
@@ -55,9 +74,9 @@ class BertSimpleRNN(torch.nn.Module):
             total_loss, correct, total = 0, 0, 0
 
             for batch in tqdm(train_dataloader):
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
 
                 optimizer.zero_grad()
                 outputs = self.forward(input_ids, attention_mask)
@@ -74,16 +93,18 @@ class BertSimpleRNN(torch.nn.Module):
             train_acc = correct / total
             train_losses.append(avg_train_loss)
             train_accuracies.append(train_acc)
-            print(f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.4f}, Accuracy: {train_acc:.4f}")
+            print(
+                f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.4f}, Accuracy: {train_acc:.4f}"
+            )
 
             # Validation
             self.eval()
             val_loss, correct, total = 0, 0, 0
             with torch.no_grad():
                 for batch in val_dataloader:
-                    input_ids = batch['input_ids'].to(self.device)
-                    attention_mask = batch['attention_mask'].to(self.device)
-                    labels = batch['labels'].to(self.device)
+                    input_ids = batch["input_ids"].to(self.device)
+                    attention_mask = batch["attention_mask"].to(self.device)
+                    labels = batch["labels"].to(self.device)
 
                     outputs = self.forward(input_ids, attention_mask)
                     loss = criterion(outputs, labels)
@@ -96,7 +117,9 @@ class BertSimpleRNN(torch.nn.Module):
             val_acc = correct / total
             val_losses.append(avg_val_loss)
             val_accuracies.append(val_acc)
-            print(f"[Epoch {epoch+1}] Val Loss: {avg_val_loss:.4f}, Accuracy: {val_acc:.4f}")
+            print(
+                f"[Epoch {epoch+1}] Val Loss: {avg_val_loss:.4f}, Accuracy: {val_acc:.4f}"
+            )
 
             # Early stopping
             if val_loss < best_val_loss:
@@ -120,9 +143,9 @@ class BertSimpleRNN(torch.nn.Module):
 
         with torch.no_grad():
             for batch in dataloader:
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
 
                 outputs = self.forward(input_ids, attention_mask)
                 loss = criterion(outputs, labels)
@@ -138,16 +161,27 @@ class BertSimpleRNN(torch.nn.Module):
         accuracy = correct / total
         return np.array(predictions), logits, avg_loss, accuracy
 
-if __name__ == "__main__":
-    #read the data
-    emotion_train = pd.read_csv('data/emotion_train.csv')
-    emotion_val = pd.read_csv('data/emotion_val.csv')
-    emotion_test = pd.read_csv('data/emotion_test.csv')
 
-    #create Dataset
-    emotion_RNN_train = DistilBERTDataset(emotion_train['text'].tolist(), emotion_train['label'].to_list())
-    emotion_RNN_val = DistilBERTDataset(emotion_val['text'].tolist(), emotion_val['label'].to_list())
-    emotion_RNN_test = DistilBERTDataset(emotion_test['text'].tolist(), emotion_test['label'].to_list())
+if __name__ == "__main__":
+
+    print("Training BERT RNN: ")
+
+    start_time = time.time()
+    # read the data
+    emotion_train = pd.read_csv("data/emotion_train.csv")
+    emotion_val = pd.read_csv("data/emotion_val.csv")
+    emotion_test = pd.read_csv("data/emotion_test.csv")
+
+    # create Dataset
+    emotion_RNN_train = DistilBERTDataset(
+        emotion_train["text"].tolist(), emotion_train["label"].to_list()
+    )
+    emotion_RNN_val = DistilBERTDataset(
+        emotion_val["text"].tolist(), emotion_val["label"].to_list()
+    )
+    emotion_RNN_test = DistilBERTDataset(
+        emotion_test["text"].tolist(), emotion_test["label"].to_list()
+    )
 
     # set seed for reproducibility
     np.random.seed(42)
@@ -158,16 +192,59 @@ if __name__ == "__main__":
     emotion_RNN_val_data = DataLoader(emotion_RNN_val, batch_size=128, shuffle=False)
     emotion_RNN_test_data = DataLoader(emotion_RNN_test, batch_size=128, shuffle=False)
 
-    #training the model
-    emotion_RNN_model = BertSimpleRNN(num_labels = 6)
-    train_accuracies, train_losses, val_accuracies, val_losses = emotion_RNN_model.train_RNN(train_dataloader= emotion_RNN_train_data, val_dataloader= emotion_RNN_val_data, num_epochs= 100, patience= 3)
+    print(f"Data loaded in {time.time() - start_time:.2f} seconds")
 
-    #evaluating the model
-    test_predictions, test_logits,test_loss, test_accuracy  = emotion_RNN_model.evaluate(emotion_RNN_test_data)
-    print(test_logits[:10], test_predictions[:10], test_accuracy, test_loss)
+    # training the model
+    emotion_RNN_model = BertSimpleRNN(num_labels=6)
+
+    train_start_time = time.time()
+
+    train_accuracies, train_losses, val_accuracies, val_losses = (
+        emotion_RNN_model.train_RNN(
+            train_dataloader=emotion_RNN_train_data,
+            val_dataloader=emotion_RNN_val_data,
+            num_epochs=100,
+            patience=3,
+        )
+    )
+
+    print(f"Model trained in {time.time() - train_start_time:.2f} seconds")
+
+    eval_start_time = time.time()
+    # evaluating the model
+    test_predictions, test_logits, test_loss, test_accuracy = (
+        emotion_RNN_model.evaluate(emotion_RNN_test_data)
+    )
+    print(f"Model evaluated in {time.time() - eval_start_time:.2f} seconds")
+
+    print(
+        f"""
+        BERT RNN Model Evaluation:
+        Test Loss: {test_loss:.4f}
+        Test Accuracy: {test_accuracy:.4f}
+        Test Predictions: {test_predictions[:10]}
+        Test Logits: {test_logits[:10]}
+        """
+    )
+
+    if not os.path.exists("results"):
+        os.makedirs("results")
 
     # save results as python objects
-    with open('results/emotion_RNN_results.pkl', 'wb') as f:
-        pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses, test_predictions, test_logits, test_accuracy, test_loss), f)
+    with open("results/emotion_RNN_results.pkl", "wb") as f:
+        pickle.dump(
+            (
+                train_accuracies,
+                train_losses,
+                val_accuracies,
+                val_losses,
+                test_predictions,
+                test_logits,
+                test_accuracy,
+                test_loss,
+            ),
+            f,
+        )
 
-
+    print(f"Results saved to results/emotion_RNN_results.pkl")
+    print(f"Total time taken: {time.time() - start_time:.2f} seconds")
