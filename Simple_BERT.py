@@ -208,3 +208,6 @@ class SimpleBERT(torch.nn.Module):
         self.bert.save_pretrained(path)
 
     
+if __name__ == "__main__":
+    # TODO add code for running the python module
+    pass

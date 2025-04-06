@@ -15,36 +15,34 @@ from utils import get_best_device
 
 
 class BertCNN(torch.nn.Module):
-    def __init__(self, num_labels, model_path="distilbert-base-uncased"):
+    def __init__(self, num_labels, num_layers = 2, num_filters = 64, n_grams = [3, 4], model_path="distilbert-base-uncased"):
         super(BertCNN, self).__init__()
 
         self.device = get_best_device()
-
+        self.num_layers = num_layers
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
             param.requires_grad = False
-        self.conv1 = torch.nn.Conv2d(1, 64, (3, 768))
-        self.conv2 = torch.nn.Conv2d(1, 64, (4, 768))
+        self.conv_layers = []
+        for i in range(num_layers):
+            self.conv_layers.append(torch.nn.Conv2d(1, num_filters,(n_grams[i], 768),))
         self.dropout = torch.nn.Dropout(0.5)
-        self.fc = torch.nn.Linear(128, num_labels)
+        self.fc = torch.nn.Linear(num_layers * num_filters, num_labels)
         self.to(self.device)
 
     def forward(self, input_ids, attention_mask):
         # Get the BERT embeddings
         outputs = self.bert(
-            input_ids=input_ids, attention_mask=attention_mask
-        ).last_hidden_state[
-            :, 1:, :
-        ]  # Exclude [CLS] token
+            input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 1:, :]  # Exclude [CLS] token
         # Expand attention mask to match last_hidden_state shape
         mask = attention_mask[:, 1:].unsqueeze(-1).float()  # [B, L, 1]
         masked_embeddings = outputs * mask  # Zero out [PAD] token embeddings
         x = masked_embeddings.unsqueeze(1)  # Add a channel dimension for Conv2d
-        x1 = torch.nn.functional.relu(self.conv1(x)).squeeze(3)
-        x2 = torch.nn.functional.relu(self.conv2(x)).squeeze(3)
-        x1 = torch.nn.functional.max_pool1d(x1, x1.size(2)).squeeze(2)
-        x2 = torch.nn.functional.max_pool1d(x2, x2.size(2)).squeeze(2)
-        x = torch.cat((x1, x2), 1)
+        _x = []
+        for i in range(self.num_layers):
+            _x[i] =torch.nn.functional.relu(self.conv_layers[i](x)).squeeze(3)
+            _x[i] = torch.nn.functional.max_pool1d(_x[i], _x[i].size(2)).squeeze(2)
+        x = torch.cat((_x[i] for i in range(self.num_layers)), 1)
         x = self.dropout(x)
         x = self.fc(x)
         return x

@@ -15,7 +15,7 @@ from utils import get_best_device
 
 
 class BertSimpleRNN(torch.nn.Module):
-    def __init__(self, num_labels, hidden_dim=64, model_path="distilbert-base-uncased"):
+    def __init__(self, num_labels, hidden_dim=64, model_path="distilbert-base-uncased", num_layers=1):
         super(BertSimpleRNN, self).__init__()
 
         self.device = get_best_device()
@@ -30,9 +30,10 @@ class BertSimpleRNN(torch.nn.Module):
             batch_first=True,
             nonlinearity="tanh",
             bidirectional=True,
+            num_layers = num_layers
         )
 
-        self.dropout = torch.nn.Dropout(0.5)
+        self.dropout = torch.nn.Dropout(0.2)
         self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)
         self.to(self.device)
 
