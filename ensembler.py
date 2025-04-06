@@ -264,11 +264,13 @@ if __name__ == "__main__":
     print(f"Mean Ensemble Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
     with open("mean_ensemble_results.pkl", "wb") as f:
         pickle.dump((predictions, avg_loss, accuracy), f)
+
     print("Testing Weighted Ensemble...")
     predictions, logits, avg_loss, accuracy = simple_ensembler.weighted_ensemble(emotion_test)
     print(f"Weighted Ensemble Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
     with open("weighted_ensemble_results.pkl", "wb") as f:
         pickle.dump((predictions, avg_loss, accuracy), f)
+
     print("Testing Max Ensemble...")
     predictions, logits, avg_loss, accuracy = simple_ensembler.max_ensemble(emotion_test)
     print(f"Max Ensemble Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
@@ -286,6 +288,7 @@ if __name__ == "__main__":
     with open("ensemble_learner_training_results.pkl", "wb") as f:
         pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses), f)
     print("Ensemble Learner training results saved.")
+    
     # Evaluate the ensemble learner
     print("Evaluating Ensemble Learner...")
     predictions, avg_loss, accuracy = ensemble_learner.evaluate(emotion_test)
