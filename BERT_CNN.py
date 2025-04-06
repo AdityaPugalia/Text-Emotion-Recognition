@@ -25,7 +25,7 @@ class BertCNN(torch.nn.Module):
             param.requires_grad = False
         self.conv_layers = []
         for i in range(num_layers):
-            self.conv_layers.append(torch.nn.Conv2d(1, num_filters,(n_grams[i], 768),))
+            self.conv_layers.append(torch.nn.Conv2d(1, num_filters,(n_grams[i], 768),).to(self.device))
         self.dropout = torch.nn.Dropout(0.5)
         self.fc = torch.nn.Linear(num_layers * num_filters, num_labels)
         self.to(self.device)
@@ -40,9 +40,9 @@ class BertCNN(torch.nn.Module):
         x = masked_embeddings.unsqueeze(1)  # Add a channel dimension for Conv2d
         _x = []
         for i in range(self.num_layers):
-            _x[i] =torch.nn.functional.relu(self.conv_layers[i](x)).squeeze(3)
+            _x.append(torch.nn.functional.relu(self.conv_layers[i](x)).squeeze(3))
             _x[i] = torch.nn.functional.max_pool1d(_x[i], _x[i].size(2)).squeeze(2)
-        x = torch.cat((_x[i] for i in range(self.num_layers)), 1)
+        x = torch.cat([_x[i] for i in range(self.num_layers)], 1)
         x = self.dropout(x)
         x = self.fc(x)
         return x
