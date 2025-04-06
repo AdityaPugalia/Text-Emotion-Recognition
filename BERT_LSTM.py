@@ -160,7 +160,7 @@ class BertLSTM(torch.nn.Module):
                 preds = torch.argmax(outputs, dim=1)
 
                 predictions.extend(preds.cpu().numpy())
-                logits.extend(outputs.cpu().numpy())
+                logits.extend(outputs.detach().cpu())
                 total_loss += loss.item() * labels.size(0)
                 correct += (preds == labels).sum().item()
                 total += labels.size(0)
