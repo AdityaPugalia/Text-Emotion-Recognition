@@ -282,13 +282,13 @@ if __name__ == "__main__":
     print("Training Ensemble Learner...")
     ensemble_learner = EnsembleLearner(6, [bert_cnn, bert_rnn, bert_lstm, bert_gru])
     train_accuracies, train_losses, val_accuracies, val_losses = ensemble_learner.train_ensemble(
-        emotion_train, emotion_val, "ensemble_model.pt", num_epochs=100
+        emotion_train, emotion_val, "models/best_ensemble_model.pt", num_epochs=100
     )
     print("Ensemble Learner trained.")
     with open("ensemble_learner_training_results.pkl", "wb") as f:
         pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses), f)
     print("Ensemble Learner training results saved.")
-    
+
     # Evaluate the ensemble learner
     print("Evaluating Ensemble Learner...")
     predictions, avg_loss, accuracy = ensemble_learner.evaluate(emotion_test)
