@@ -33,7 +33,7 @@ class BertCNN(torch.nn.Module):
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
             param.requires_grad = False
-        self.conv_layers = []
+        self.conv_layers = torch.nn.ModuleList()
         for i in range(num_layers):
             self.conv_layers.append(
                 torch.nn.Conv2d(
