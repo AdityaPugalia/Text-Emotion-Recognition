@@ -70,9 +70,27 @@ def load_data(batch_size: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
             ),
         }
 
-    train_loader = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(datasets["val"], batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(datasets["test"], batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(
+        datasets["train"],
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=6,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        datasets["val"],
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=6,
+        pin_memory=True,
+    )
+    test_loader = DataLoader(
+        datasets["test"],
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=6,
+        pin_memory=True,
+    )
 
     return train_loader, val_loader, test_loader
 
@@ -338,7 +356,7 @@ if __name__ == "__main__":
 
     # Common parameters
     num_labels = 6  # Number of output labels
-    batch_size = 128
+    batch_size = 64
     num_epochs = 50
     patience = 3
     learning_rate = 0.001
