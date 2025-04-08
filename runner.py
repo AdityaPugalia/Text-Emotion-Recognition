@@ -52,9 +52,9 @@ def load_data(batch_size: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
             ),
         }
 
-    train_loader = DataLoader(emotion_RNN_train, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(emotion_RNN_val, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(emotion_RNN_test, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(datasets["train"], batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(datasets["val"], batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(datasets["test"], batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader, test_loader
 
@@ -158,7 +158,7 @@ def perform_sweep(
     if model_type == "CNN":
         if num_filters_list is None or ngram_min_filter_list is None:
             raise ValueError(
-                "num_filters_list and ngram_min_filter_size must be provided for CNN."
+                "num_filters_list and ngram_min_filter_list must be provided for CNN."
             )
 
         original_combinations = itertools.product(num_layers_list, num_filters_list)
