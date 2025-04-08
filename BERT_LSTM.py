@@ -60,13 +60,14 @@ class BertLSTM(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def train_LSTM(
+    def train_model(
         self,
         train_dataloader,
         val_dataloader,
         num_epochs=10,
         learning_rate=0.001,
         patience=3,
+        save_model=True,
         save_path="models/best_LSTM_model.pt",
     ):
         optimizer = Adam(self.parameters(), lr=learning_rate)
@@ -76,6 +77,8 @@ class BertLSTM(torch.nn.Module):
 
         train_accuracies, train_losses = [], []
         val_accuracies, val_losses = [], []
+
+        best_state_dict = None
 
         for epoch in range(num_epochs):
             self.train()
@@ -133,13 +136,24 @@ class BertLSTM(torch.nn.Module):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
-                torch.save(self.state_dict(), save_path)
-                print("✔️ Saved best model")
+                if save_model:
+                    torch.save(self.state_dict(), save_path)
+                    print("✔️ Saved best model")
+                else:
+                    # store state dict in memory
+                    best_state_dict = self.state_dict()
+                    print("✔️ Stored best model in memory")
+
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
                     print("⏹️ Early stopping triggered")
                     break
+
+        # restore best state dict
+        if best_state_dict is not None:
+            self.load_state_dict(best_state_dict)
+            print("✔️ Restored best model from memory")
 
         return train_accuracies, train_losses, val_accuracies, val_losses
 
@@ -207,7 +221,7 @@ if __name__ == "__main__":
 
     train_start_time = time.time()
     train_accuracies, train_losses, val_accuracies, val_losses = (
-        emotion_RNN_model.train_LSTM(
+        emotion_RNN_model.train_model(
             train_dataloader=emotion_RNN_train_data,
             val_dataloader=emotion_RNN_val_data,
             num_epochs=100,

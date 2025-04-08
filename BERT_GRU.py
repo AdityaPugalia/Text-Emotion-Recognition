@@ -58,13 +58,14 @@ class BertGRU(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def train_GRU(
+    def train_model(
         self,
         train_dataloader,
         val_dataloader,
         num_epochs=100,
         learning_rate=0.001,
         patience=3,
+        save_model=True,
         save_path="models/best_GRU_model.pt",
     ):
         if not os.path.exists(os.path.dirname(save_path)):
@@ -76,6 +77,8 @@ class BertGRU(torch.nn.Module):
         patience_counter = 0
 
         train_accuracies, train_losses, val_accuracies, val_losses = [], [], [], []
+
+        best_state_dict = None
 
         for epoch in range(num_epochs):
             self.train()
@@ -131,13 +134,23 @@ class BertGRU(torch.nn.Module):
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
                 patience_counter = 0
-                torch.save(self.state_dict(), save_path)
-                print(f"Saved best model at epoch {epoch+1}")
+                if save_model:
+                    torch.save(self.state_dict(), save_path)
+                    print(f"Saved best model at epoch {epoch+1}")
+                else:
+                    # store state dict in memory
+                    best_state_dict = self.state_dict()
+                    print("✔️ Stored best model in memory")
+
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
                     print(f"Early stopping at epoch {epoch+1}")
                     break
+
+        if best_state_dict is not None:
+            self.load_state_dict(best_state_dict)
+            print("✔️ Restored best model from memory")
 
         return train_accuracies, train_losses, val_accuracies, val_losses
 
@@ -208,7 +221,7 @@ if __name__ == "__main__":
 
     train_start_time = time.time()
     train_accuracies, train_losses, val_accuracies, val_losses = (
-        emotion_GRU_model.train_GRU(
+        emotion_GRU_model.train_model(
             train_dataloader=emotion_GRU_train_data,
             val_dataloader=emotion_GRU_val_data,
             num_epochs=100,
