@@ -1,3 +1,4 @@
+import argparse
 import itertools
 import json
 import os
@@ -23,6 +24,23 @@ torch.manual_seed(seed)
 
 # stores the datasets in memory to avoid reloading every time
 datasets = None
+
+
+def cli() -> argparse.Namespace:
+    """
+    Command-line interface for running the script.
+    """
+    parser = argparse.ArgumentParser(
+        description="Run a sweep to find optimal hyperparameters."
+    )
+    parser.add_argument(
+        "models",
+        type=str,
+        nargs="+",
+        choices=["CNN", "RNN", "LSTM", "GRU"],
+        help="Types of models to train (space-separated).",
+    )
+    return parser.parse_args()
 
 
 def load_data(batch_size: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
@@ -148,7 +166,7 @@ def perform_sweep(
         num_filters_list (List[int], optional): List of filter counts (for CNN).
         ngram_min_filter_list (List[int], optional): List of min n-gram filter sizes (for CNN). Ngrams are calculated according to [min_size + i for i in range(num_layers)]
         batch_size (int, optional): Batch size for training. Defaults to 128.
-        num_epochs (int, optional): Number of epochs for training. Defaults to 10.
+        num_epochs (int, optional): Number of epochs for training. Defaults to 100.
         patience (int, optional): Early stopping patience. Defaults to 3.
         learning_rate (float, optional): Learning rate for training. Defaults to 0.001.
     """
@@ -291,6 +309,12 @@ def perform_sweep(
 
 
 if __name__ == "__main__":
+
+    # Parse command-line arguments
+    args = cli()
+    models = args.models
+    print(f"Running sweep for model types: {models}")
+
     # Define parameters for each model type
     sweep_params = {
         "CNN": {
@@ -316,11 +340,15 @@ if __name__ == "__main__":
     num_labels = 6  # Number of output labels
     batch_size = 128
     num_epochs = 50
-    patience = 5
+    patience = 3
     learning_rate = 0.001
 
     # Run sweep for each model type
     for model_type, params in sweep_params.items():
+        if model_type not in models:
+            print(f"Skipping sweep for model type: {model_type}")
+            continue
+
         print(f"Running sweep for model type: {model_type}")
         if model_type == "CNN":
             perform_sweep(
