@@ -221,6 +221,8 @@ def perform_sweep(
                 "hidden_size": hidden_size,
             }
 
+        print(f"Training {model_type} with params: {current_params}")
+
         run_start_time = time.time()
 
         # Train the model
@@ -283,7 +285,7 @@ def perform_sweep(
             # save best model params
             with open(f"models/{model_type}/best_model_params.json", "w") as f:
                 json.dump(current_params, f)
-            print(f"Saved best model")
+            print(f"New best model saved to models/{model_type}/best_model.pt !")
 
     print(f"Sweep completed in {time.time() - sweep_start_time:.2f} seconds")
 
