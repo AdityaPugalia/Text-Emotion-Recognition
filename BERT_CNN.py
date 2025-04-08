@@ -15,17 +15,35 @@ from utils import get_best_device
 
 
 class BertCNN(torch.nn.Module):
-    def __init__(self, num_labels, num_layers = 2, num_filters = 64, n_grams = [3, 4], model_path="distilbert-base-uncased"):
-        super(BertCNN, self).__init__()
+    def __init__(
+        self,
+        num_labels,
+        num_layers=2,
+        num_filters=64,
+        n_grams=None,
+        model_path="distilbert-base-uncased",
+    ):
+        super().__init__()
+
+        if n_grams is None:
+            n_grams = [3, 4]
+        if len(n_grams) < num_layers:
+            raise ValueError("The length of n_grams must be at least equal to num_layers.")
 
         self.device = get_best_device()
         self.num_layers = num_layers
         self.bert = DistilBertModel.from_pretrained(model_path)
         for param in self.bert.parameters():
             param.requires_grad = False
-        self.conv_layers = []
+        self.conv_layers = torch.nn.ModuleList()
         for i in range(num_layers):
-            self.conv_layers.append(torch.nn.Conv2d(1, num_filters,(n_grams[i], 768),).to(self.device))
+            self.conv_layers.append(
+                torch.nn.Conv2d(
+                    1,
+                    num_filters,
+                    (n_grams[i], 768),
+                ).to(self.device)
+            )
         self.dropout = torch.nn.Dropout(0.5)
         self.fc = torch.nn.Linear(num_layers * num_filters, num_labels)
         self.to(self.device)
@@ -33,7 +51,10 @@ class BertCNN(torch.nn.Module):
     def forward(self, input_ids, attention_mask):
         # Get the BERT embeddings
         outputs = self.bert(
-            input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 1:, :]  # Exclude [CLS] token
+            input_ids=input_ids, attention_mask=attention_mask
+        ).last_hidden_state[
+            :, 1:, :
+        ]  # Exclude [CLS] token
         # Expand attention mask to match last_hidden_state shape
         mask = attention_mask[:, 1:].unsqueeze(-1).float()  # [B, L, 1]
         masked_embeddings = outputs * mask  # Zero out [PAD] token embeddings
@@ -47,13 +68,14 @@ class BertCNN(torch.nn.Module):
         x = self.fc(x)
         return x
 
-    def train_CNN(
+    def train_model(
         self,
         train_dataloader,
         val_dataloader,
         num_epochs=100,
         learning_rate=0.001,
         patience=3,
+        save_model=True,
         save_path="models/best_CNN_model.pt",
     ):
         if not os.path.exists(os.path.dirname(save_path)):
@@ -64,15 +86,14 @@ class BertCNN(torch.nn.Module):
         best_val_loss = float("inf")
         patience_counter = 0
 
+        train_accuracies, train_losses, val_accuracies, val_losses = [], [], [], []
+
+        best_state_dict = None
+
         for epoch in range(num_epochs):
             self.train()
-            total_loss = 0
-            correct = 0
-            total = 0
-            train_accuracies = []
-            train_losses = []
-            val_accuracies = []
-            val_losses = []
+            total_loss, correct, total = 0, 0, 0
+
             for batch in tqdm(train_dataloader):
                 # Move the batch to the device
                 input_ids = batch["input_ids"]
@@ -134,13 +155,23 @@ class BertCNN(torch.nn.Module):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
-                torch.save(self.state_dict(), save_path)
-                print(f"Saved best model at epoch {epoch+1}")
+                if save_model:
+                    torch.save(self.state_dict(), save_path)
+                    print(f"Saved best model at epoch {epoch+1}")
+                else:
+                    # store state dict in memory
+                    best_state_dict = self.state_dict()
+                    print("✔️ Stored best model in memory")
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
                     print(f"Early stopping at epoch {epoch+1}")
                     break
+
+        if best_state_dict is not None:
+            self.load_state_dict(best_state_dict)
+            print("✔️ Restored best model from memory")
+
         return train_accuracies, train_losses, val_accuracies, val_losses
 
     def evaluate(self, dataloader):
@@ -213,7 +244,7 @@ if __name__ == "__main__":
     train_start_time = time.time()
 
     train_accuracies, train_losses, val_accuracies, val_losses = (
-        emotion_CNN_model.train_CNN(
+        emotion_CNN_model.train_model(
             train_dataloader=emotion_CNN_train_data,
             val_dataloader=emotion_CNN_val_data,
             num_epochs=100,
