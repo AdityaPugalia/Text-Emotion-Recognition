@@ -27,6 +27,8 @@ class BertCNN(torch.nn.Module):
 
         if n_grams is None:
             n_grams = [3, 4]
+        if len(n_grams) < num_layers:
+            raise ValueError("The length of n_grams must be at least equal to num_layers.")
 
         self.device = get_best_device()
         self.num_layers = num_layers
