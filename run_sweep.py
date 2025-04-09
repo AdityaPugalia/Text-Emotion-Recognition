@@ -4,7 +4,7 @@ import json
 import os
 import pickle
 import time
-from typing import Tuple, Literal, List, Union
+from typing import Tuple, Literal, List, Union, Dict
 
 import numpy as np
 import pandas as pd
@@ -95,6 +95,27 @@ def load_data(batch_size: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
     return train_loader, val_loader, test_loader
 
 
+def get_param_comb_filename(
+    params: Dict[str, Union[int, List[int]]],
+    model_type: Literal["CNN", "RNN", "LSTM", "GRU"],
+) -> str:
+    """
+    Generate a filename based on the parameter combinations.
+
+    Args:
+        params (Dict[str, Union[int, List[int]]]): The parameters for the model.
+        model_type (Literal["CNN", "RNN", "LSTM", "GRU"]): The type of model.
+
+    Returns:
+        str: The generated filename.
+    """
+    params_str = "_".join(f"{key}={value}" for key, value in params.items())
+    params_str = (
+        params_str.replace(" ", "").replace("[", "").replace("]", "").replace(",", "_")
+    )
+    return f"results/{model_type}/{params_str}.pkl"
+
+
 def get_model(
     model_type: Literal["CNN", "RNN", "LSTM", "GRU"],
     num_labels: int,
@@ -172,6 +193,7 @@ def perform_sweep(
     num_epochs: int = 100,
     patience: int = 5,
     learning_rate: float = 0.001,
+    redo: bool = False,
 ):
     """
     Perform a hyperparameter sweep for the specified model type.
@@ -187,6 +209,7 @@ def perform_sweep(
         num_epochs (int, optional): Number of epochs for training. Defaults to 100.
         patience (int, optional): Early stopping patience. Defaults to 3.
         learning_rate (float, optional): Learning rate for training. Defaults to 0.001.
+        redo (bool, optional): Whether to train models for param combinations that already exist. Defaults to False.
     """
     train_loader, val_loader, test_loader = load_data(batch_size)
 
@@ -227,6 +250,16 @@ def perform_sweep(
     sweep_start_time = time.time()
 
     for params in param_combinations:
+
+        metrics_filename = get_param_comb_filename(current_params, model_type)
+        # check if file already exists - if so, skip this combination
+
+        if not redo and os.path.exists(metrics_filename):
+            print(
+                f"Skipping existing combination: {current_params} since it already exists. See {metrics_filename}"
+            )
+            continue
+
         if model_type == "CNN":
             num_layers, num_filters, n_grams = params
 
@@ -286,17 +319,6 @@ def perform_sweep(
         )
 
         # save model metrics
-        current_params_str = "_".join(
-            f"{key}={value}" for key, value in current_params.items()
-        )
-        current_params_str = (
-            current_params_str.replace(" ", "")
-            .replace("[", "")
-            .replace("]", "")
-            .replace(",", "_")
-        )
-        metrics_filename = f"results/{model_type}/{current_params_str}.pkl"
-
         with open(metrics_filename, "wb") as f:
             pickle.dump(
                 (
