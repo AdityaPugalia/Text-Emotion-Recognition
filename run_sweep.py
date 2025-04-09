@@ -251,17 +251,23 @@ def perform_sweep(
 
     for params in param_combinations:
 
-        metrics_filename = get_param_comb_filename(current_params, model_type)
-        # check if file already exists - if so, skip this combination
-
-        if not redo and os.path.exists(metrics_filename):
-            print(
-                f"Skipping existing combination: {current_params} since it already exists. See {metrics_filename}"
-            )
-            continue
-
         if model_type == "CNN":
             num_layers, num_filters, n_grams = params
+            current_params = {
+                "num_labels": num_labels,
+                "num_layers": num_layers,
+                "num_filters": num_filters,
+                "n_grams": n_grams,
+            }
+
+            metrics_filename = get_param_comb_filename(current_params, model_type)
+            # check if file already exists - if so, skip this combination
+
+            if not redo and os.path.exists(metrics_filename):
+                print(
+                    f"Skipping existing combination: {current_params} since it already exists. See {metrics_filename}"
+                )
+                continue
 
             model = get_model(
                 model_type=model_type,
@@ -270,25 +276,28 @@ def perform_sweep(
                 num_filters=num_filters,
                 n_grams=n_grams,
             )
+        else:
+            num_layers, hidden_size = params
             current_params = {
                 "num_labels": num_labels,
                 "num_layers": num_layers,
-                "num_filters": num_filters,
-                "n_grams": n_grams,
+                "hidden_size": hidden_size,
             }
-        else:
-            num_layers, hidden_size = params
+            metrics_filename = get_param_comb_filename(current_params, model_type)
+            # check if file already exists - if so, skip this combination
+
+            if not redo and os.path.exists(metrics_filename):
+                print(
+                    f"Skipping existing combination: {current_params} since it already exists. See {metrics_filename}"
+                )
+                continue
+
             model = get_model(
                 model_type=model_type,
                 num_labels=num_labels,
                 num_layers=num_layers,
                 hidden_size=hidden_size,
             )
-            current_params = {
-                "num_labels": num_labels,
-                "num_layers": num_layers,
-                "hidden_size": hidden_size,
-            }
 
         print(f"Training {model_type} with params: {current_params}")
 
