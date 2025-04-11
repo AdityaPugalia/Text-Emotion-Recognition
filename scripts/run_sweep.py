@@ -5,12 +5,13 @@ import os
 import pickle
 import sys
 import time
+from collections import Counter
 from typing import Tuple, Literal, List, Union, Dict
 
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -76,12 +77,30 @@ def load_data(batch_size: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
             ),
         }
 
+        # Get labels from the training dataset
+        train_labels = emotion_train["label"].tolist()
+
+        # Count number of samples per class
+        label_counts = Counter(train_labels)
+
+        # Compute weight for each class (inverse of frequency)
+        class_weights = {label: 1.0 / count for label, count in label_counts.items()}
+
+        # Assign a weight to each sample in the training set
+        sample_weights = [class_weights[label] for label in train_labels]
+
+        # Create a sampler using those sample weights
+        sampler = WeightedRandomSampler(
+            weights=sample_weights, num_samples=len(sample_weights), replacement=True
+        )
+
     train_loader = DataLoader(
         datasets["train"],
         batch_size=batch_size,
         shuffle=True,
         num_workers=6,
         pin_memory=True,
+        sampler=sampler,
     )
     val_loader = DataLoader(
         datasets["val"],
