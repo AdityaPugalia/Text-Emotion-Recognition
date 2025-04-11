@@ -146,7 +146,6 @@ class SimpleBERT(torch.nn.Module):
 
     def predict(self, texts):
         self.eval()
-        texts.to(self.device)
         if isinstance(texts, pd.DataFrame):
             texts = texts["text"].tolist()
         tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -156,9 +155,12 @@ class SimpleBERT(torch.nn.Module):
         input_ids = encodings["input_ids"].to(self.device)
         attention_mask = encodings["attention_mask"].to(self.device)
         with torch.no_grad():
-            logits = self.forward(input_ids, attention_mask)
+            embeddings = self.bert(
+                input_ids, attention_mask=attention_mask
+            ).last_hidden_state[:, 0, :]
+            logits = self.forward(embeddings)
             _, predicted = torch.max(logits, 1)
-            return predicted.numpy()
+            return predicted.cpu().numpy()
 
     def evaluate(self, test_loader):
         self.eval()
