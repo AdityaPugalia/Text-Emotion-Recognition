@@ -174,11 +174,11 @@ class BertLSTM(torch.nn.Module):
                 preds = torch.argmax(outputs, dim=1)
 
                 predictions.extend(preds.cpu().numpy())
-                logits.extend(outputs.detach().cpu())
                 total_loss += loss.item() * labels.size(0)
                 correct += (preds == labels).sum().item()
                 total += labels.size(0)
-
+                logits.append(outputs.detach().cpu())
+        logits = torch.cat(logits, dim=0)  # Shape: [num_samples, num_classes]
         avg_loss = total_loss / total
         accuracy = correct / total
         return np.array(predictions), logits, avg_loss, accuracy

@@ -199,7 +199,8 @@ class BertCNN(torch.nn.Module):
                 total += labels.size(0)
                 correct += (prediction == labels).sum().item()
                 predictions.extend(prediction.cpu())
-                logits.extend(outputs.detach().cpu())
+                logits.append(outputs.detach().cpu())
+        logits = torch.cat(logits, dim=0)  # Shape: [num_samples, num_classes]
         avg_loss = total_loss / total
         accuracy = correct / total
 

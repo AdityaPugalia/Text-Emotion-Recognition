@@ -6,6 +6,9 @@ from Simple_BERT import DistilBERTDataset
 import numpy as np
 import pandas as pd
 import pickle
+from BERT_CNN import BertCNN
+from BERT_GRU import BertGRU
+from BERT_LSTM import BertLSTM
 
 class EnsembleDataset(Dataset):
     def __init__ (self, logits : torch.Tensor, labels : torch.Tensor):
@@ -161,6 +164,8 @@ class EnsembleLearner(torch.nn.Module):
 class SimpleEnsembler:
     def __init__(self, model_list):
         self.device = get_best_device()
+        print(type(model_list))
+        print(type(model_list[0]))
         self.models = [model.to(self.device) for model in model_list]
         self.ensemble_learner = None
 
@@ -200,7 +205,7 @@ class SimpleEnsembler:
             weights.append(accuracy)
         weights = torch.softmax(torch.tensor(weights), dim=0)
         logits = torch.stack(logits)
-        logits = torch.sum(logits * weights.unsqueeze(1), dim=0)
+        logits = torch.sum(logits * weights.view(-1, 1, 1), dim=0)
         predictions = torch.argmax(logits, dim=1)
         for i in range(total):
             if predictions[i] == test_data.labels[i]:
@@ -251,51 +256,54 @@ if __name__ == "__main__":
 
     # load the models
     print("Loading models...")
-    bert_cnn = torch.load('models/best_CNN_model.pt')
-    bert_rnn = torch.load("models/best_simpleRNN_model.pt")
-    bert_lstm = torch.load("models/best_LSTM_model.pt")
-    bert_gru = torch.load("models/best_GRU_model.pt")
+    bert_cnn = BertCNN(num_labels= 6, num_layers= 3, num_filters= 128, n_grams= [2, 3, 4])
+    bert_cnn.load_state_dict(torch.load('models/CNN/best_model.pt', map_location= torch.device('cpu')))
+    # bert_rnn = torch.load("models/best_model.pt", map_location= torch.device('cpu'))
+    bert_lstm = BertLSTM(num_labels= 6, num_layers= 3, hidden_dim= 256)
+    bert_lstm.load_state_dict(torch.load('models/LSTM/best_model.pt', map_location= torch.device('cpu')))
+    bert_gru = BertGRU(num_labels=6, num_layers= 3, hidden_dim= 256)
+    bert_gru.load_state_dict(torch.load('models/GRU/best_model.pt', map_location= torch.device('cpu')))
     print("Models loaded.")
 
     # Test the ensemble methods
-    simple_ensembler = SimpleEnsembler([bert_cnn, bert_rnn, bert_lstm, bert_gru])
+    simple_ensembler = SimpleEnsembler([bert_cnn, bert_lstm, bert_gru])
     print("Testing Mean Ensemble...")
     predictions, logits, avg_loss, accuracy = simple_ensembler.mean_ensemble(emotion_test)
     print(f"Mean Ensemble Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
-    with open("mean_ensemble_results.pkl", "wb") as f:
+    with open("results/mean_ensemble_results.pkl", "wb") as f:
         pickle.dump((predictions, avg_loss, accuracy), f)
 
     print("Testing Weighted Ensemble...")
     predictions, logits, avg_loss, accuracy = simple_ensembler.weighted_ensemble(emotion_test)
     print(f"Weighted Ensemble Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
-    with open("weighted_ensemble_results.pkl", "wb") as f:
+    with open("results/weighted_ensemble_results.pkl", "wb") as f:
         pickle.dump((predictions, avg_loss, accuracy), f)
 
     print("Testing Max Ensemble...")
     predictions, logits, avg_loss, accuracy = simple_ensembler.max_ensemble(emotion_test)
     print(f"Max Ensemble Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
-    with open("max_ensemble_results.pkl", "wb") as f:
+    with open("results/max_ensemble_results.pkl", "wb") as f:
         pickle.dump((predictions, avg_loss, accuracy), f)
     print("Simple Ensemble methods tested.")
 
-    # Train the ensemble learner
-    print("Training Ensemble Learner...")
-    ensemble_learner = EnsembleLearner(6, [bert_cnn, bert_rnn, bert_lstm, bert_gru])
-    train_accuracies, train_losses, val_accuracies, val_losses = ensemble_learner.train_ensemble(
-        emotion_train, emotion_val, "models/best_ensemble_model.pt", num_epochs=100
-    )
-    print("Ensemble Learner trained.")
-    with open("ensemble_learner_training_results.pkl", "wb") as f:
-        pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses), f)
-    print("Ensemble Learner training results saved.")
+    # # Train the ensemble learner
+    # print("Training Ensemble Learner...")
+    # ensemble_learner = EnsembleLearner(6, [bert_cnn, bert_lstm, bert_gru])
+    # train_accuracies, train_losses, val_accuracies, val_losses = ensemble_learner.train_ensemble(
+    #     emotion_train, emotion_val, "models/best_ensemble_model.pt", num_epochs=100
+    # )
+    # print("Ensemble Learner trained.")
+    # with open("ensemble_learner_training_results.pkl", "wb") as f:
+    #     pickle.dump((train_accuracies, train_losses, val_accuracies, val_losses), f)
+    # print("Ensemble Learner training results saved.")
 
-    # Evaluate the ensemble learner
-    print("Evaluating Ensemble Learner...")
-    predictions, avg_loss, accuracy = ensemble_learner.evaluate(emotion_test)
-    print(f"Ensemble Learner Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
-    with open("ensemble_learner_results.pkl", "wb") as f:
-        pickle.dump((predictions, avg_loss, accuracy), f)
-    print("All tests completed.")
+    # # Evaluate the ensemble learner
+    # print("Evaluating Ensemble Learner...")
+    # predictions, avg_loss, accuracy = ensemble_learner.evaluate(emotion_test)
+    # print(f"Ensemble Learner Accuracy: {accuracy:.4f}, Loss: {avg_loss:.4f}")
+    # with open("ensemble_learner_results.pkl", "wb") as f:
+    #     pickle.dump((predictions, avg_loss, accuracy), f)
+    # print("All tests completed.")
 
     
 

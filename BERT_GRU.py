@@ -177,8 +177,8 @@ class BertGRU(torch.nn.Module):
                 correct += (outputs.argmax(1) == labels).sum().item()
 
                 predictions.extend(outputs.argmax(1).cpu().numpy())
-                logits.extend(outputs.detach().cpu())
-
+                logits.append(outputs.detach().cpu())
+        logits = torch.cat(logits, dim=0)  # Shape: [num_samples, num_classes]
         avg_loss = total_loss / total
         accuracy = correct / total
         return np.array(predictions), logits, avg_loss, accuracy
