@@ -3,6 +3,7 @@ import itertools
 import json
 import os
 import pickle
+import sys
 import time
 from typing import Tuple, Literal, List, Union, Dict
 
@@ -11,11 +12,10 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from BERT_CNN import BertCNN
-from BERT_GRU import BertGRU
-from BERT_LSTM import BertLSTM
-from BERT_RNN import BertSimpleRNN
-from Simple_BERT import DistilBERTDataset
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.datasets import DistilBERTDataset
+from src.net import BertCNN, BertSimpleRNN, BertLSTM, BertGRU
 
 # set seed for reproducibility
 seed = 42
@@ -54,9 +54,15 @@ def load_data(batch_size: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
     global datasets
 
     if datasets is None:
-        emotion_train = pd.read_csv("data/emotion_train.csv")
-        emotion_val = pd.read_csv("data/emotion_val.csv")
-        emotion_test = pd.read_csv("data/emotion_test.csv")
+        project_directory = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        train_filename = os.path.join(project_directory, "data", "emotion_train.csv")
+        val_filename = os.path.join(project_directory, "data", "emotion_val.csv")
+        test_filename = os.path.join(project_directory, "data", "emotion_test.csv")
+
+        # read the data
+        emotion_train = pd.read_csv(train_filename)
+        emotion_val = pd.read_csv(val_filename)
+        emotion_test = pd.read_csv(test_filename)
 
         datasets = {
             "train": DistilBERTDataset(
@@ -335,8 +341,6 @@ def perform_sweep(
                     train_loss,
                     val_acc,
                     val_loss,
-                    predictions,
-                    logits,
                     accuracy,
                     loss,
                 ),
