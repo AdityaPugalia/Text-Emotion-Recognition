@@ -12,11 +12,11 @@ def get_best_device() -> torch.device:
     """
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        print("Using GPU (CUDA) for training.")
+        print("Using Device GPU (CUDA)")
     elif torch.backends.mps.is_available():
         device = torch.device("mps")
-        print("Using GPU (MPS) for training.")
+        print("Using Device GPU (MPS)")
     else:
         device = torch.device("cpu")
-        print("Using CPU for training.")
+        print("Using Device CPU")
     return device

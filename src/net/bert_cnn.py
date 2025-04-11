@@ -1,17 +1,16 @@
 import os
-import time
-import torch
 import pickle
+import time
 import numpy as np
 import pandas as pd
-
-from tqdm import tqdm
+import torch
 from torch.optim import Adam
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import DistilBertModel
 
-from Simple_BERT import DistilBERTDataset
-from utils import get_best_device
+from src.datasets import DistilBERTDataset
+from src.utils import get_best_device
 
 
 class BertCNN(torch.nn.Module):
@@ -28,7 +27,9 @@ class BertCNN(torch.nn.Module):
         if n_grams is None:
             n_grams = [3, 4]
         if len(n_grams) < num_layers:
-            raise ValueError("The length of n_grams must be at least equal to num_layers.")
+            raise ValueError(
+                "The length of n_grams must be at least equal to num_layers."
+            )
 
         self.device = get_best_device()
         self.num_layers = num_layers

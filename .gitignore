@@ -1,8 +1,55 @@
+# Byte-compiled files
+*.__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
 venv/
-results/
+nndl-venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Python package files
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.idea/
+.vscode/
+*.iml
+
+# Test coverage reports
+htmlcov/
+.coverage
+.tox/
+.nox/
+
+# PyCharm
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Custom directories
 outputs/
-models/
 errors/
 job.sh
-__pycache__/
-
+models/
+results/
+.cache/
+*.pkl

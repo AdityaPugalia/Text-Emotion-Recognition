@@ -1,20 +1,19 @@
 import os
-import time
-import torch
 import pickle
+import time
 import numpy as np
 import pandas as pd
-
-from tqdm import tqdm
+import torch
 from torch.optim import Adam
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import DistilBertModel
 
-from Simple_BERT import DistilBERTDataset
-from utils import get_best_device
+from src.datasets import DistilBERTDataset
+from src.utils import get_best_device
 
 
-class BertLSTM(torch.nn.Module):
+class BertGRU(torch.nn.Module):
     def __init__(
         self,
         num_labels,
@@ -22,7 +21,7 @@ class BertLSTM(torch.nn.Module):
         num_layers=1,
         model_path="distilbert-base-uncased",
     ):
-        super(BertLSTM, self).__init__()
+        super(BertGRU, self).__init__()
 
         self.device = get_best_device()
 
@@ -30,7 +29,7 @@ class BertLSTM(torch.nn.Module):
         for param in self.bert.parameters():
             param.requires_grad = False  # Freeze BERT weights
 
-        self.lstm = torch.nn.LSTM(
+        self.gru = torch.nn.GRU(
             input_size=768,
             hidden_size=hidden_dim,
             num_layers=num_layers,
@@ -39,24 +38,22 @@ class BertLSTM(torch.nn.Module):
         )
 
         self.dropout = torch.nn.Dropout(0.5)
-        self.fc = torch.nn.Linear(
-            hidden_dim * 2, num_labels
-        )  # bidirectional = hidden*2
+        self.fc = torch.nn.Linear(hidden_dim * 2, num_labels)  # *2 for bidirectional
         self.to(self.device)
 
     def forward(self, input_ids, attention_mask):
         # BERT embeddings
-        bert_output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        embeddings = bert_output.last_hidden_state[:, 1:, :]  # Skip [CLS] token
+        outputs = self.bert(
+            input_ids=input_ids, attention_mask=attention_mask
+        ).last_hidden_state
+        mask = attention_mask.unsqueeze(-1).float()
+        masked_outputs = outputs * mask  # Mask padding tokens
 
-        # Mask out PAD tokens
-        mask = attention_mask[:, 1:].unsqueeze(-1).float()
-        masked_embeddings = embeddings * mask
+        # RNN
+        rnn_out, _ = self.gru(masked_outputs)
+        pooled_output = rnn_out[:, -1, :]  # Take the last timestep
 
-        lstm_out, (hn, cn) = self.lstm(masked_embeddings)
-        final_hidden = lstm_out[:, -1, :]  # Last time step
-
-        x = self.dropout(final_hidden)
+        x = self.dropout(pooled_output)
         x = self.fc(x)
         return x
 
@@ -64,19 +61,21 @@ class BertLSTM(torch.nn.Module):
         self,
         train_dataloader,
         val_dataloader,
-        num_epochs=10,
+        num_epochs=100,
         learning_rate=0.001,
         patience=3,
         save_model=True,
-        save_path="models/best_LSTM_model.pt",
+        save_path="models/best_GRU_model.pt",
     ):
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+
         optimizer = Adam(self.parameters(), lr=learning_rate)
         criterion = torch.nn.CrossEntropyLoss()
         best_val_loss = float("inf")
         patience_counter = 0
 
-        train_accuracies, train_losses = [], []
-        val_accuracies, val_losses = [], []
+        train_accuracies, train_losses, val_accuracies, val_losses = [], [], [], []
 
         best_state_dict = None
 
@@ -84,7 +83,9 @@ class BertLSTM(torch.nn.Module):
             self.train()
             total_loss, correct, total = 0, 0, 0
 
-            for batch in tqdm(train_dataloader):
+            for batch in tqdm(
+                train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]"
+            ):
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
@@ -95,50 +96,46 @@ class BertLSTM(torch.nn.Module):
                 loss.backward()
                 optimizer.step()
 
-                preds = torch.argmax(outputs, dim=1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
                 total_loss += loss.item() * labels.size(0)
+                correct += (outputs.argmax(1) == labels).sum().item()
+                total += labels.size(0)
 
             avg_train_loss = total_loss / total
-            train_acc = correct / total
+            train_accuracy = correct / total
             train_losses.append(avg_train_loss)
-            train_accuracies.append(train_acc)
-            print(
-                f"[Epoch {epoch+1}] Train Loss: {avg_train_loss:.4f}, Accuracy: {train_acc:.4f}"
-            )
+            train_accuracies.append(train_accuracy)
+            print(f"Train Loss: {avg_train_loss:.4f}, Accuracy: {train_accuracy:.4f}")
 
-            # Validation
             self.eval()
             val_loss, correct, total = 0, 0, 0
+
             with torch.no_grad():
-                for batch in val_dataloader:
+                for batch in tqdm(
+                    val_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]"
+                ):
                     input_ids = batch["input_ids"].to(self.device)
                     attention_mask = batch["attention_mask"].to(self.device)
                     labels = batch["labels"].to(self.device)
 
                     outputs = self.forward(input_ids, attention_mask)
                     loss = criterion(outputs, labels)
-                    preds = torch.argmax(outputs, dim=1)
-                    correct += (preds == labels).sum().item()
-                    total += labels.size(0)
+
                     val_loss += loss.item() * labels.size(0)
+                    correct += (outputs.argmax(1) == labels).sum().item()
+                    total += labels.size(0)
 
             avg_val_loss = val_loss / total
-            val_acc = correct / total
+            val_accuracy = correct / total
             val_losses.append(avg_val_loss)
-            val_accuracies.append(val_acc)
-            print(
-                f"[Epoch {epoch+1}] Val Loss: {avg_val_loss:.4f}, Accuracy: {val_acc:.4f}"
-            )
+            val_accuracies.append(val_accuracy)
+            print(f"Val Loss: {avg_val_loss:.4f}, Accuracy: {val_accuracy:.4f}")
 
-            # Early stopping
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
                 patience_counter = 0
                 if save_model:
                     torch.save(self.state_dict(), save_path)
-                    print("✔️ Saved best model")
+                    print(f"Saved best model at epoch {epoch+1}")
                 else:
                     # store state dict in memory
                     best_state_dict = self.state_dict()
@@ -147,10 +144,9 @@ class BertLSTM(torch.nn.Module):
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
-                    print("⏹️ Early stopping triggered")
+                    print(f"Early stopping at epoch {epoch+1}")
                     break
 
-        # restore best state dict
         if best_state_dict is not None:
             self.load_state_dict(best_state_dict)
             print("✔️ Restored best model from memory")
@@ -159,9 +155,12 @@ class BertLSTM(torch.nn.Module):
 
     def evaluate(self, dataloader):
         self.eval()
-        predictions, logits = [], []
+        predictions = []
+        logits = []
         criterion = torch.nn.CrossEntropyLoss()
-        total_loss, correct, total = 0, 0, 0
+        total_loss = 0
+        correct = 0
+        total = 0
 
         with torch.no_grad():
             for batch in dataloader:
@@ -171,12 +170,12 @@ class BertLSTM(torch.nn.Module):
 
                 outputs = self.forward(input_ids, attention_mask)
                 loss = criterion(outputs, labels)
-                preds = torch.argmax(outputs, dim=1)
 
-                predictions.extend(preds.cpu().numpy())
                 total_loss += loss.item() * labels.size(0)
-                correct += (preds == labels).sum().item()
                 total += labels.size(0)
+                correct += (outputs.argmax(1) == labels).sum().item()
+
+                predictions.extend(outputs.argmax(1).cpu().numpy())
                 logits.append(outputs.detach().cpu())
         logits = torch.cat(logits, dim=0)  # Shape: [num_samples, num_classes]
         avg_loss = total_loss / total
@@ -186,22 +185,22 @@ class BertLSTM(torch.nn.Module):
 
 if __name__ == "__main__":
 
-    print("Training BERT LSTM: ")
-    start_time = time.time()
+    print("Training BERT GRU: ")
 
+    start_time = time.time()
     # read the data
     emotion_train = pd.read_csv("data/emotion_train.csv")
     emotion_val = pd.read_csv("data/emotion_val.csv")
     emotion_test = pd.read_csv("data/emotion_test.csv")
 
     # create Dataset
-    emotion_RNN_train = DistilBERTDataset(
+    emotion_GRU_train = DistilBERTDataset(
         emotion_train["text"].tolist(), emotion_train["label"].to_list()
     )
-    emotion_RNN_val = DistilBERTDataset(
+    emotion_GRU_val = DistilBERTDataset(
         emotion_val["text"].tolist(), emotion_val["label"].to_list()
     )
-    emotion_RNN_test = DistilBERTDataset(
+    emotion_GRU_test = DistilBERTDataset(
         emotion_test["text"].tolist(), emotion_test["label"].to_list()
     )
 
@@ -210,37 +209,37 @@ if __name__ == "__main__":
     torch.manual_seed(42)
 
     # create DataLoader for each dataset
-    emotion_RNN_train_data = DataLoader(emotion_RNN_train, batch_size=128, shuffle=True)
-    emotion_RNN_val_data = DataLoader(emotion_RNN_val, batch_size=128, shuffle=False)
-    emotion_RNN_test_data = DataLoader(emotion_RNN_test, batch_size=128, shuffle=False)
+    emotion_GRU_train_data = DataLoader(emotion_GRU_train, batch_size=128, shuffle=True)
+    emotion_GRU_val_data = DataLoader(emotion_GRU_val, batch_size=128, shuffle=False)
+    emotion_GRU_test_data = DataLoader(emotion_GRU_test, batch_size=128, shuffle=False)
 
     print(f"Data loaded in {time.time() - start_time:.2f} seconds")
 
     # training the model
-    emotion_RNN_model = BertLSTM(num_labels=6)
+    emotion_GRU_model = BertGRU(num_labels=6)
 
     train_start_time = time.time()
     train_accuracies, train_losses, val_accuracies, val_losses = (
-        emotion_RNN_model.train_model(
-            train_dataloader=emotion_RNN_train_data,
-            val_dataloader=emotion_RNN_val_data,
+        emotion_GRU_model.train_model(
+            train_dataloader=emotion_GRU_train_data,
+            val_dataloader=emotion_GRU_val_data,
             num_epochs=100,
             patience=3,
         )
     )
-
     print(f"Training completed in {time.time() - train_start_time:.2f} seconds")
 
     eval_start_time = time.time()
+
     # evaluating the model
     test_predictions, test_logits, test_loss, test_accuracy = (
-        emotion_RNN_model.evaluate(emotion_RNN_test_data)
+        emotion_GRU_model.evaluate(emotion_GRU_test_data)
     )
-
     print(f"Evaluation completed in {time.time() - eval_start_time:.2f} seconds")
+
     print(
         f"""
-        BERT LSTM Model Evaluation:
+        BERT GRU Model Evaluation:
         Test Loss: {test_loss:.4f}
         Test Accuracy: {test_accuracy:.4f}
         Test Predictions: {test_predictions[:10]}
@@ -252,7 +251,7 @@ if __name__ == "__main__":
         os.makedirs("results")
 
     # save results as python objects
-    with open("results/emotion_LSTM_results.pkl", "wb") as f:
+    with open("results/emotion_GRU_results.pkl", "wb") as f:
         pickle.dump(
             (
                 train_accuracies,
@@ -266,6 +265,5 @@ if __name__ == "__main__":
             ),
             f,
         )
-
-    print("Results saved to results/emotion_LSTM_results.pkl")
+    print("Results saved to emotion_GRU_results.pkl")
     print(f"Total time taken: {time.time() - start_time:.2f} seconds")

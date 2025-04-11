@@ -1,17 +1,16 @@
 import os
-import time
-import torch
 import pickle
+import time
 import numpy as np
 import pandas as pd
-
-from tqdm import tqdm
+import torch
 from torch.optim import Adam
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import DistilBertModel
 
-from Simple_BERT import DistilBERTDataset
-from utils import get_best_device
+from src.datasets import DistilBERTDataset
+from src.utils import get_best_device
 
 
 class BertSimpleRNN(torch.nn.Module):
