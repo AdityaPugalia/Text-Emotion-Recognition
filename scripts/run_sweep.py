@@ -348,9 +348,13 @@ def perform_sweep(
             )
         print("Model metrics saved to", metrics_filename)
 
+        # get val accuracy at min val loss
+        min_val_loss = min(val_loss)
+        val_acc_at_min_loss = val_acc[val_loss.index(min_val_loss)]
+
         # Check if the current model is the best one
-        if accuracy > best_accuracy:
-            best_accuracy = accuracy
+        if val_acc_at_min_loss > best_accuracy:
+            best_accuracy = val_acc_at_min_loss
             # save the best model
             torch.save(model.state_dict(), f"models/{model_type}/best_model.pt")
             # save best model params
